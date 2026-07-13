@@ -1,7 +1,11 @@
-import { fetchPage, HatFetchError } from "./fetch/client.js";
-import { hasProxy, resolveProxySpec } from "./fetch/proxy.js";
+import { UnblockError as HatFetchError, hasProxy, resolveProxySpec, retrieve } from "hatbreak";
 
 const IP_URL = "https://api.ipify.org";
+
+/** HTTP-only fetch (no browser) returning the response body text. */
+async function fetchText(url: string, env: NodeJS.ProcessEnv): Promise<string> {
+  return (await retrieve(url, { render: "http", env })).markdown.trim();
+}
 
 const ok = (m: string) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const bad = (m: string) => console.log(`  \x1b[31m✗\x1b[0m ${m}`);
@@ -19,7 +23,7 @@ export async function runSelfTest(version: string): Promise<number> {
   // 1. Direct connectivity + IP baseline.
   let directIp = "";
   try {
-    directIp = (await fetchPage(IP_URL, { env: {} })).body.trim();
+    directIp = await fetchText(IP_URL, {});
     ok(`Direct connection works — your IP is ${directIp}`);
   } catch (err) {
     bad(`Direct connection failed: ${msg(err)}`);
@@ -36,7 +40,7 @@ export async function runSelfTest(version: string): Promise<number> {
       ok(`Proxy resolved — ${spec?.label}`);
 
       // 3. Proxied IP must differ from the direct IP.
-      const ip1 = (await fetchPage(IP_URL, { env: process.env, maxProxyRetries: 1 })).body.trim();
+      const ip1 = await fetchText(IP_URL, process.env);
       if (ip1 && ip1 !== directIp) {
         ok(`Traffic is routed through the proxy — exit IP is ${ip1} (not your ${directIp})`);
       } else {
@@ -45,7 +49,7 @@ export async function runSelfTest(version: string): Promise<number> {
       }
 
       // 4. Rotation (informational — sticky sessions legitimately repeat).
-      const ip2 = (await fetchPage(IP_URL, { env: process.env, maxProxyRetries: 1 })).body.trim();
+      const ip2 = await fetchText(IP_URL, process.env);
       if (ip2 && ip2 !== ip1) ok(`IP rotation works — second request exited from ${ip2}`);
       else info(`Second request reused ${ip2} (expected if PROXYHAT_STICKY is set).`);
     } catch (err) {
@@ -54,11 +58,11 @@ export async function runSelfTest(version: string): Promise<number> {
     }
   }
 
-  // 5. Scrape pipeline (HTML → Markdown).
+  // 5. Scrape pipeline (HTML → Markdown). The extracted body mentions "domain".
   try {
-    const res = await fetchPage("https://example.com", { env: {} });
-    if (/example domain/i.test(res.body)) ok("Scrape pipeline works — fetched and parsed example.com");
-    else bad("Scrape pipeline returned unexpected content");
+    const md = await fetchText("https://example.com", {});
+    if (md.length > 20 && /domain|example/i.test(md)) ok("Scrape pipeline works — fetched and parsed example.com");
+    else bad(`Scrape pipeline returned unexpected content (${md.length} chars)`);
   } catch (err) {
     bad(`Scrape pipeline failed: ${msg(err)}`);
     failed = true;

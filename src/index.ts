@@ -2,11 +2,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { HatFetchError } from "./fetch/client.js";
-import { hasProxy, resolveProxySpec } from "./fetch/proxy.js";
+import { UnblockError as HatFetchError, closeBrowser, hasProxy, resolveProxySpec } from "hatbreak";
 import { crawlSite } from "./tools/crawl.js";
 import { scrapePage } from "./tools/scrape.js";
-import { closeBrowser } from "./browser/render.js";
 import { createRequire } from "node:module";
 
 const { version: VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };

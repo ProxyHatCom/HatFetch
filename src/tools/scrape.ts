@@ -1,4 +1,4 @@
-import { retrieve, type RenderMode } from "../retrieve.js";
+import { retrieve, type RenderMode } from "hatbreak";
 
 export interface ScrapeOutput {
   url: string;
@@ -14,7 +14,7 @@ export interface ScrapeOutput {
 /**
  * Fetch a single URL and return clean Markdown. Escalates from HTTP to a real
  * browser automatically (see {@link retrieve}). Non-HTML responses are returned
- * as-is. Throws {@link import("../fetch/client.js").HatFetchError} on block/failure.
+ * as-is. Throws `UnblockError` (from hatbreak) on block/failure.
  */
 export async function scrapePage(
   url: string,

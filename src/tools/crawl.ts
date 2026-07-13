@@ -1,5 +1,4 @@
-import { HatFetchError } from "../fetch/client.js";
-import type { RenderMode } from "../retrieve.js";
+import { UnblockError as HatFetchError, type RenderMode } from "hatbreak";
 import { scrapePage } from "./scrape.js";
 
 export interface CrawlPage {

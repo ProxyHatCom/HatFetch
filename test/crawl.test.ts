@@ -1,39 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const fetchMock = vi.fn();
-vi.mock("undici", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("undici")>();
-  return { ...actual, fetch: fetchMock };
-});
+// Crawl BFS is HatFetch's own logic; the page-fetch engine lives in `hatbreak`.
+// Mock scrapePage so we test the crawl traversal (depth, caps, same-domain) in isolation.
+vi.mock("../src/tools/scrape.js", () => ({ scrapePage: vi.fn() }));
 
 const { crawlSite } = await import("../src/tools/crawl.js");
+const { scrapePage } = await import("../src/tools/scrape.js");
+const scrapeMock = vi.mocked(scrapePage);
 
-function page(url: string, body: string) {
-  return {
-    status: 200,
-    url,
-    headers: { get: (k: string) => (k.toLowerCase() === "content-type" ? "text/html" : null) },
-    text: async () => body,
-  };
-}
-
-const SITE: Record<string, string> = {
-  "https://docs.example/": `<article><h1>Home</h1><p>Welcome to the docs, plenty of readable body text here to
-    satisfy the extractor.</p><a href="/a">A</a> <a href="/b">B</a>
-    <a href="https://external.example/x">External</a></article>`,
-  "https://docs.example/a": `<article><h1>Page A</h1><p>Article A has a good amount of content so it is treated
-    as the main region.</p><a href="/c">C</a></article>`,
-  "https://docs.example/b": `<article><h1>Page B</h1><p>Article B likewise carries enough readable text to be
-    the primary content of this page.</p></article>`,
-  "https://docs.example/c": `<article><h1>Page C</h1><p>Should not be reached at depth 1.</p></article>`,
+const SITE: Record<string, { markdown: string; links: string[] }> = {
+  "https://docs.example/": {
+    markdown: "Home page",
+    links: ["https://docs.example/a", "https://docs.example/b", "https://external.example/x"],
+  },
+  "https://docs.example/a": { markdown: "Page A", links: ["https://docs.example/c"] },
+  "https://docs.example/b": { markdown: "Page B", links: [] },
+  "https://docs.example/c": { markdown: "Page C", links: [] },
 };
 
 beforeEach(() => {
-  fetchMock.mockReset();
-  fetchMock.mockImplementation(async (url: string) => {
-    const body = SITE[url] ?? SITE[url.replace(/\/$/, "")];
-    if (!body) throw new Error(`unexpected url ${url}`);
-    return page(url, body);
+  scrapeMock.mockReset();
+  scrapeMock.mockImplementation(async (url: string) => {
+    const page = SITE[url] ?? SITE[`${url.replace(/\/$/, "")}`];
+    if (!page) throw new Error(`unexpected url ${url}`);
+    return { url, title: null, markdown: page.markdown, links: page.links, via: "mock" };
   });
 });
 
@@ -46,13 +36,17 @@ describe("crawlSite", () => {
       expect.arrayContaining(["https://docs.example/", "https://docs.example/a", "https://docs.example/b"]),
     );
     expect(urls).not.toContain("https://external.example/x");
-    // /c is depth 2, beyond maxDepth 1.
-    expect(urls).not.toContain("https://docs.example/c");
+    expect(urls).not.toContain("https://docs.example/c"); // depth 2, beyond maxDepth 1
     expect(pages).toHaveLength(3);
   });
 
   it("respects maxPages", async () => {
     const { pages } = await crawlSite("https://docs.example/", { maxDepth: 2, maxPages: 2, env: {} });
     expect(pages).toHaveLength(2);
+  });
+
+  it("passes the render mode through to scrapePage", async () => {
+    await crawlSite("https://docs.example/", { maxDepth: 0, render: "browser", env: {} });
+    expect(scrapeMock).toHaveBeenCalledWith("https://docs.example/", true, {}, { render: "browser" });
   });
 });
