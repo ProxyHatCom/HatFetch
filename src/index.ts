@@ -6,8 +6,9 @@ import { HatFetchError } from "./fetch/client.js";
 import { hasProxy, resolveProxySpec } from "./fetch/proxy.js";
 import { crawlSite } from "./tools/crawl.js";
 import { scrapePage } from "./tools/scrape.js";
+import { createRequire } from "node:module";
 
-const VERSION = "0.1.0";
+const { version: VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
