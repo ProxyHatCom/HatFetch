@@ -1,0 +1,65 @@
+{
+  "name": "hatfetch",
+  "version": "0.1.0",
+  "description": "Give any LLM agent the power to read any website — even the ones that block bots. An MCP server that returns clean Markdown and handles blocks automatically via residential proxies.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "agent",
+    "web-scraping",
+    "scraper",
+    "crawler",
+    "markdown",
+    "proxy",
+    "residential-proxy",
+    "anti-bot",
+    "cloudflare",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://github.com/ProxyHatCom/HatFetch",
+  "bugs": "https://github.com/ProxyHatCom/HatFetch/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ProxyHatCom/HatFetch.git"
+  },
+  "license": "MIT",
+  "author": "ProxyHat (https://proxyhat.com)",
+  "type": "module",
+  "bin": {
+    "hatfetch": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.0",
+    "turndown": "^7.2.0",
+    "undici": "^6.21.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/turndown": "^5.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
