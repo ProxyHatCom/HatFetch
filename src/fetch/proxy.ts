@@ -6,8 +6,12 @@ import { fetch } from "undici";
  * builds a fresh dispatcher from `uri` per attempt (so rotating IPs actually rotate).
  */
 export interface ProxySpec {
-  /** Full proxy URL, e.g. http://user:pass@gate.proxyhat.com:8080 */
+  /** Full proxy URL, e.g. http://user:pass@gate.proxyhat.com:8080 (for undici). */
   uri: string;
+  /** Structured parts for Playwright/Patchright: server + basic-auth. */
+  server: string;
+  username: string;
+  password: string;
   /** Human-readable label for logs / error messages. */
   label: string;
   /** True when this is the first-class ProxyHat residential path. */
@@ -123,18 +127,6 @@ interface SubUser {
   suspended_at?: string | null;
 }
 
-/** Build the full gateway proxy URL from base credentials + targeting env vars. */
-function gatewayUri(creds: GatewayCreds, env: NodeJS.ProcessEnv): string {
-  const username = buildProxyHatUsername(creds.username, {
-    country: env.PROXYHAT_COUNTRY,
-    region: env.PROXYHAT_REGION,
-    city: env.PROXYHAT_CITY,
-    sticky: env.PROXYHAT_STICKY,
-    filter: env.PROXYHAT_FILTER,
-  });
-  return `http://${encodeURIComponent(username)}:${encodeURIComponent(creds.password)}@${PROXYHAT_GATEWAY}:${PROXYHAT_PORT}`;
-}
-
 /**
  * Resolve a proxy from the environment.
  *
@@ -151,7 +143,7 @@ export async function resolveProxySpec(env: NodeJS.ProcessEnv = process.env): Pr
   const phUser = env.PROXYHAT_USERNAME?.trim();
   const phPass = env.PROXYHAT_PASSWORD?.trim();
   if (phUser && phPass) {
-    return { uri: gatewayUri({ username: phUser, password: phPass }, env), label: "ProxyHat residential", isProxyHat: true };
+    return gatewaySpec({ username: phUser, password: phPass }, env, "ProxyHat residential");
   }
 
   const apiKey = env.PROXYHAT_API_KEY?.trim();
@@ -164,15 +156,42 @@ export async function resolveProxySpec(env: NodeJS.ProcessEnv = process.env): Pr
       credsCache.set(apiKey, pending);
     }
     const creds = await pending;
-    return { uri: gatewayUri(creds, env), label: "ProxyHat residential (via API key)", isProxyHat: true };
+    return gatewaySpec(creds, env, "ProxyHat residential (via API key)");
   }
 
   const proxyUrl = env.PROXY_URL?.trim();
   if (proxyUrl) {
-    return { uri: proxyUrl, label: "custom proxy", isProxyHat: false };
+    const u = new URL(proxyUrl);
+    return {
+      uri: proxyUrl,
+      server: `${u.protocol}//${u.host}`,
+      username: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      label: "custom proxy",
+      isProxyHat: false,
+    };
   }
 
   return null;
+}
+
+/** Build a ProxySpec (undici uri + Playwright parts) for the ProxyHat gateway. */
+function gatewaySpec(creds: GatewayCreds, env: NodeJS.ProcessEnv, label: string): ProxySpec {
+  const username = buildProxyHatUsername(creds.username, {
+    country: env.PROXYHAT_COUNTRY,
+    region: env.PROXYHAT_REGION,
+    city: env.PROXYHAT_CITY,
+    sticky: env.PROXYHAT_STICKY,
+    filter: env.PROXYHAT_FILTER,
+  });
+  return {
+    uri: `http://${encodeURIComponent(username)}:${encodeURIComponent(creds.password)}@${PROXYHAT_GATEWAY}:${PROXYHAT_PORT}`,
+    server: `http://${PROXYHAT_GATEWAY}:${PROXYHAT_PORT}`,
+    username,
+    password: creds.password,
+    label,
+    isProxyHat: true,
+  };
 }
 
 /** True when at least one proxy source is configured (sync; does not call the API). */

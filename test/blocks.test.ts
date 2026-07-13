@@ -24,6 +24,15 @@ describe("detectBlock", () => {
     expect(detectBlock(200, "<div class='g-recaptcha'></div>").blocked).toBe(true);
   });
 
+  it("flags Cloudflare/Incapsula BLOCK pages (not just challenges)", () => {
+    expect(detectBlock(200, "<h1>Why have I been blocked?</h1>").blocked).toBe(true);
+    expect(detectBlock(200, "Sorry, you have been blocked").blocked).toBe(true);
+    expect(detectBlock(200, "<title>Attention Required! | Cloudflare</title>").blocked).toBe(true);
+    expect(detectBlock(200, "Cloudflare Ray ID: 8ab12cd34").blocked).toBe(true);
+    expect(detectBlock(200, "Access to this page has been denied").blocked).toBe(true);
+    expect(detectBlock(200, "Request unsuccessful. Incapsula incident ID").blocked).toBe(true);
+  });
+
   it("does not flag ordinary content", () => {
     expect(detectBlock(200, "<html><body><h1>Welcome</h1><p>Normal page.</p></body></html>").blocked).toBe(false);
   });

@@ -18,6 +18,22 @@ export interface ExtractResult {
   links: string[];
 }
 
+/**
+ * Heuristic: did an HTTP fetch return an empty client-rendered shell (an SPA that
+ * renders its content with JavaScript)? Little extracted text + signs of a JS app
+ * ⇒ the real content needs a browser. Used to auto-escalate to render mode.
+ */
+export function looksLikeEmptyShell(markdown: string, html: string): boolean {
+  const text = markdown.replace(/\s+/g, " ").trim();
+  if (text.length >= 400) return false; // enough real content already
+  const scriptCount = (html.match(/<script/gi) ?? []).length;
+  const hasAppRoot =
+    /<div[^>]+id=["'](root|app|__next|__nuxt|main)["']/i.test(html) || /data-reactroot|ng-version|data-vue/i.test(html);
+  if (hasAppRoot || scriptCount >= 3) return true;
+  // Very little extracted text but there's JS on the page that could render more.
+  return text.length < 200 && scriptCount >= 1;
+}
+
 type ParsedDocument = ReturnType<typeof parseHTML>["document"];
 
 /** Collect absolute, http(s) links from a DOM document, resolved against `baseUrl`. */

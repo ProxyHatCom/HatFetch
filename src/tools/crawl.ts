@@ -1,4 +1,5 @@
 import { HatFetchError } from "../fetch/client.js";
+import type { RenderMode } from "../retrieve.js";
 import { scrapePage } from "./scrape.js";
 
 export interface CrawlPage {
@@ -21,6 +22,7 @@ export interface CrawlOptions {
   maxDepth?: number;
   maxPages?: number;
   sameDomain?: boolean;
+  render?: RenderMode;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -37,7 +39,7 @@ function normalize(url: string): string {
  * pages) and `maxDepth`; stays on the seed's host when `sameDomain` is true.
  */
 export async function crawlSite(seed: string, options: CrawlOptions = {}): Promise<CrawlOutput> {
-  const { maxDepth = 2, maxPages = 20, sameDomain = true, env = process.env } = options;
+  const { maxDepth = 2, maxPages = 20, sameDomain = true, render = "auto", env = process.env } = options;
 
   const start = normalize(seed);
   const seedHost = new URL(start).host;
@@ -51,7 +53,7 @@ export async function crawlSite(seed: string, options: CrawlOptions = {}): Promi
     const { url, depth } = queue.shift()!;
 
     try {
-      const page = await scrapePage(url, true, env);
+      const page = await scrapePage(url, true, env, { render });
       pages.push({ url: page.url, title: page.title, markdown: page.markdown });
 
       if (depth < maxDepth) {

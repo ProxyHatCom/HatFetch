@@ -1,19 +1,29 @@
 import { fetch, ProxyAgent } from "undici";
 import { detectBlock } from "./blocks.js";
 import { hasProxy, resolveProxySpec } from "./proxy.js";
+import { assertFetchable } from "./ssrf.js";
 
 /**
  * Error thrown when a page cannot be retrieved. `userMessage` is written for the
  * LLM/agent that called the tool — when a block happens without proxies, it *is*
  * the funnel: it tells the user exactly how to get past the block with residential IPs.
+ * `blocked` marks anti-bot blocks (used to decide whether to escalate to a browser).
  */
+export type HatFetchErrorKind = "block" | "network" | "http" | "proxy" | "render";
+
 export class HatFetchError extends Error {
   constructor(
     message: string,
     readonly userMessage: string,
+    readonly kind: HatFetchErrorKind = "http",
   ) {
     super(message);
     this.name = "HatFetchError";
+  }
+
+  /** Anti-bot block (as opposed to a genuine 404 or a missing host). */
+  get blocked(): boolean {
+    return this.kind === "block";
   }
 }
 
@@ -66,6 +76,7 @@ function stillBlockedHint(host: string, reason: string): string {
  */
 export async function fetchPage(url: string, options: FetchOptions = {}): Promise<FetchResult> {
   const { timeoutMs = 30_000, maxProxyRetries = 2, env = process.env } = options;
+  assertFetchable(url); // SSRF guard: refuse internal/loopback/metadata targets.
   const host = safeHost(url);
   const proxied = hasProxy(env);
 
@@ -109,6 +120,7 @@ export async function fetchPage(url: string, options: FetchOptions = {}): Promis
         `network error fetching ${url}: ${reason}`,
         `Could not reach ${host}: ${reason}. ` +
           (proxied ? "The proxy connection may have failed — check your credentials." : ""),
+        "network",
       );
     }
 
@@ -120,13 +132,14 @@ export async function fetchPage(url: string, options: FetchOptions = {}): Promis
       lastBlockReason = block.reason ?? "bot detection";
       if (!proxied) {
         // No proxy configured — this is the funnel moment.
-        throw new HatFetchError(`blocked fetching ${url}: ${lastBlockReason}`, proxyHint(host, lastBlockReason));
+        throw new HatFetchError(`blocked fetching ${url}: ${lastBlockReason}`, proxyHint(host, lastBlockReason), "block");
       }
       // Proxy configured: keep trying with fresh IPs.
       if (attempt < totalAttempts - 1) continue;
       throw new HatFetchError(
         `blocked fetching ${url} after ${totalAttempts} attempts: ${lastBlockReason}`,
         stillBlockedHint(host, lastBlockReason),
+        "block",
       );
     }
 

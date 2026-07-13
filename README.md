@@ -2,9 +2,9 @@
 
 # 🎩 HatFetch
 
-**Give any LLM agent the power to read _any_ website — even the ones that block bots.**
+**Give any LLM agent the power to read the modern web — JavaScript sites and most bot-protected pages.**
 
-Clean Markdown out. Blocks handled automatically.
+Clean Markdown out. Renders JS, rotates residential IPs, escalates to a real stealth browser only when needed.
 
 [![npm](https://img.shields.io/npm/v/hatfetch)](https://www.npmjs.com/package/hatfetch)
 [![license](https://img.shields.io/npm/l/hatfetch)](./LICENSE)
@@ -14,9 +14,23 @@ Clean Markdown out. Blocks handled automatically.
 
 ---
 
-HatFetch is a [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude, Cursor, and any MCP client two tools — `scrape` and `crawl` — that turn web pages into clean, LLM-ready Markdown.
+HatFetch is a [Model Context Protocol](https://modelcontextprotocol.io) server that gives Claude, Cursor, and any MCP client the tools `scrape`, `crawl`, and `screenshot` — turning web pages into clean, LLM-ready Markdown.
 
-The difference from a plain `fetch`: when a site blocks bots (Cloudflare, DataDome, PerimeterX, `403`/`429`, CAPTCHA walls), HatFetch **detects it and retries through residential proxies automatically**. Your agent stops getting `Access Denied` and starts getting content.
+The difference from a plain `fetch`: HatFetch **escalates automatically**. It starts with a fast HTTP fetch; if the page is a JavaScript app that renders client-side, or it gets blocked by bot detection, HatFetch transparently escalates to a **real stealth browser** ([Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright)) running through **residential proxies**. Your agent stops getting empty shells and `Access Denied`, and starts getting content.
+
+### What it does and doesn't do (honest version)
+
+| Target | Result |
+|---|---|
+| Server-rendered sites (news, docs, blogs, forums, most catalogs) | ✅ Fast HTTP path |
+| JavaScript / SPA sites (React, Vue, client-rendered) | ✅ Auto-escalates to the browser and renders |
+| Geo-restricted content | ✅ Exit from any of 148+ countries |
+| Sites that block datacenter IPs / rate-limit by IP | ✅ Rotating residential IPs |
+| Many Cloudflare / anti-bot sites | ✅ Browser + residential fingerprint passes a large share |
+| The hardest anti-bot (aggressive Cloudflare, DataDome, PerimeterX) | ⚠️ Sometimes blocked — HatFetch tells you honestly instead of returning a CAPTCHA page as "content" |
+| CAPTCHA-gated / login-required flows | ❌ Out of scope (needs an interactive solver) |
+
+No tool passes 100% of anti-bot in 2026 — anyone claiming otherwise is selling something. HatFetch gets you the calm-to-medium web reliably and a good share of the hard web, and is honest about the rest.
 
 ## Quick start
 
@@ -83,6 +97,7 @@ Fetch a single URL and return its main content as Markdown.
 |---|---|---|---|
 | `url` | string | — | Absolute `http(s)` URL to fetch. |
 | `onlyMainContent` | boolean | `true` | Strip nav/ads/footer and return just the article body. |
+| `render` | `auto`\|`http`\|`browser` | `auto` | `auto`: HTTP first, escalate to the browser for JS apps or blocked pages. `http`: fast, HTTP only. `browser`: force JS rendering + stealth. |
 
 ### `crawl`
 Breadth-first crawl a site and return every page as Markdown.
@@ -93,14 +108,26 @@ Breadth-first crawl a site and return every page as Markdown.
 | `maxDepth` | number | `2` | Link depth to follow from the seed. |
 | `maxPages` | number | `20` | Maximum pages to fetch. |
 | `sameDomain` | boolean | `true` | Only follow links on the seed's host. |
+| `render` | `auto`\|`http`\|`browser` | `auto` | Render mode per page (see `scrape`). |
+
+### `screenshot`
+Render a URL in a real browser (residential + stealth) and return a PNG image.
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `url` | string | — | Absolute `http(s)` URL to screenshot. |
+
+> Browser mode downloads a Chromium build (~150MB) on first use — one-time, automatic. The HTTP path needs no browser.
 
 ## Why HatFetch
 
 | | Plain `fetch` / basic MCP | Hosted scraping APIs | **HatFetch** |
 |---|:---:|:---:|:---:|
 | Clean Markdown for LLMs | ❌ | ✅ | ✅ |
+| Renders JavaScript / SPA sites | ❌ | ✅ | ✅ (auto) |
 | Runs locally, no API middleman | ✅ | ❌ | ✅ |
-| Gets past bot detection | ❌ | ✅ | ✅ (residential proxies) |
+| Gets past IP blocks & geo-walls | ❌ | ✅ | ✅ (residential) |
+| Gets past common anti-bot | ❌ | ✅ | ✅ (browser + residential) |
 | Bring your own proxies | ❌ | ❌ | ✅ |
 | Free & open source (MIT) | ✅ | ❌ | ✅ |
 | Per-request cost | free | 💲 per page | free + proxy bandwidth |
@@ -143,12 +170,14 @@ Other commands: `hatfetch --version`, `hatfetch --help`.
 
 ## How it works
 
-1. **Fetch** the URL with a realistic browser User-Agent (direct, or through your proxy).
-2. **Detect blocks** — anti-bot status codes (`403`/`429`/`503`) and challenge-page signatures from the major vendors.
-3. **Retry** through a fresh residential IP when blocked (proxies rotate per request).
-4. **Extract** the main content with Mozilla Readability and convert it to Markdown with Turndown.
+HatFetch escalates from cheap to powerful, only paying for what a page needs:
 
-If a page can't be retrieved, the tool returns an honest, actionable message instead of failing silently.
+1. **HTTP fetch** with a realistic User-Agent (direct or through your proxy). Detects blocks — anti-bot status codes (`403`/`429`/`503`) and challenge/block-page signatures from the major vendors (Cloudflare, DataDome, PerimeterX, Incapsula, Akamai) — and retries through a fresh residential IP.
+2. **Auto-escalate to the browser** when the page is an empty JS shell, or was blocked/reset. A real [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) Chromium (patched to defeat headless fingerprinting) loads the page through the residential proxy, waits for the network to settle, and scrolls to trigger lazy content.
+3. **Extract** the main content with Mozilla Readability and convert to Markdown with Turndown.
+4. **Be honest** — if even the browser lands on a challenge/block page, HatFetch returns an actionable error instead of passing the block page off as content.
+
+Safety: a built-in SSRF guard refuses internal/loopback/metadata addresses, and tool output is size-capped so a huge page can't blow your context window.
 
 ## Development
 
@@ -161,9 +190,10 @@ npm run dev        # run from source (tsx)
 
 ## Roadmap
 
-- Optional headless rendering for JS-heavy SPAs
 - `search` tool (query → results → scrape)
-- Screenshot output
+- Structured extraction (CSS / schema)
+- Page actions (click, fill, login flows)
+- Optional CAPTCHA-solver hook for the hardest targets
 - Python edition
 
 ## License

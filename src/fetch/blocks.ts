@@ -20,11 +20,22 @@ const BLOCK_SIGNATURES: RegExp[] = [
   /challenge-platform/i, // Cloudflare Turnstile / challenge
   /_cf_chl_opt/i,
   /turnstile/i,
+  // Cloudflare BLOCK page (not just the challenge) — returned even to browsers.
+  /why have i been blocked/i,
+  /sorry, you have been blocked/i,
+  /you have been blocked/i,
+  /attention required!/i,
+  /cloudflare ray id/i,
+  /performance &(amp;)? security by cloudflare/i,
+  /this website is using a security service to protect itself/i,
   /captcha-delivery\.com/i, // DataDome
   /datadome/i,
   /px-captcha/i, // PerimeterX / HUMAN
   /_pxhd/i,
   /perimeterx/i,
+  /access to this page has been denied/i, // PerimeterX / Incapsula block page
+  /request unsuccessful\. incapsula/i, // Imperva Incapsula
+  /pardon our interruption/i, // Distil / Imperva
   /access denied.*reference #\d/i, // Akamai
   /please enable javascript and cookies to continue/i,
   /are you a human/i,

@@ -6,17 +6,27 @@ import { HatFetchError } from "./fetch/client.js";
 import { hasProxy, resolveProxySpec } from "./fetch/proxy.js";
 import { crawlSite } from "./tools/crawl.js";
 import { scrapePage } from "./tools/scrape.js";
+import { closeBrowser } from "./browser/render.js";
 import { createRequire } from "node:module";
 
 const { version: VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
 
+type ToolContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
 type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
+  content: ToolContent[];
   isError?: boolean;
 };
 
+// Cap tool output so a big page/crawl can't blow the model's context window.
+const MAX_OUTPUT_CHARS = 120_000;
+function cap(text: string, limit = MAX_OUTPUT_CHARS): string {
+  return text.length > limit ? `${text.slice(0, limit)}\n\n…[truncated ${text.length - limit} characters]` : text;
+}
+
 function ok(text: string): ToolResult {
-  return { content: [{ type: "text", text }] };
+  return { content: [{ type: "text", text: cap(text) }] };
 }
 
 /** Turn any thrown error into a tool error, preserving the funnel message. */
@@ -34,20 +44,28 @@ server.registerTool(
     title: "Scrape a web page to Markdown",
     description:
       "Fetch a single URL and return its content as clean, LLM-ready Markdown. " +
-      "Automatically retries through residential proxies when the site blocks bots " +
-      "(Cloudflare, DataDome, 403/429, CAPTCHA walls). Use for reading docs, articles, " +
-      "product pages, search results, or any single page.",
+      "Renders JavaScript sites and gets past bot detection automatically: tries a fast " +
+      "HTTP fetch, then escalates to a real stealth browser through residential proxies " +
+      "when a page is an empty JS app or is blocked (Cloudflare, DataDome, 403/429). Use " +
+      "for docs, articles, product pages, SPAs, or any single page.",
     inputSchema: {
       url: z.string().url().describe("Absolute http(s) URL to fetch."),
       onlyMainContent: z
         .boolean()
         .optional()
         .describe("Extract just the main article/content, stripping nav/ads/footer. Default true."),
+      render: z
+        .enum(["auto", "http", "browser"])
+        .optional()
+        .describe(
+          "How to fetch. 'auto' (default): HTTP first, escalate to a real browser if needed. " +
+            "'http': fast, HTTP only. 'browser': force full JS rendering + stealth fingerprint.",
+        ),
     },
   },
-  async ({ url, onlyMainContent }): Promise<ToolResult> => {
+  async ({ url, onlyMainContent, render }): Promise<ToolResult> => {
     try {
-      const out = await scrapePage(url, onlyMainContent ?? true);
+      const out = await scrapePage(url, onlyMainContent ?? true, process.env, { render });
       const header = out.title ? `# ${out.title}\n\n` : "";
       const meta = `> Source: ${out.url} · retrieved via ${out.via}\n\n`;
       return ok(header + meta + (out.markdown || "_(no textual content found)_"));
@@ -73,14 +91,19 @@ server.registerTool(
         .boolean()
         .optional()
         .describe("Only follow links on the seed's host. Default true."),
+      render: z
+        .enum(["auto", "http", "browser"])
+        .optional()
+        .describe("Render mode per page (see scrape). Default 'auto'. 'browser' is slower but handles JS sites."),
     },
   },
-  async ({ url, maxDepth, maxPages, sameDomain }): Promise<ToolResult> => {
+  async ({ url, maxDepth, maxPages, sameDomain, render }): Promise<ToolResult> => {
     try {
       const { pages, errors } = await crawlSite(url, {
         maxDepth,
         maxPages,
         sameDomain: sameDomain ?? true,
+        render,
       });
 
       if (pages.length === 0) {
@@ -90,7 +113,8 @@ server.registerTool(
 
       const sections = pages.map((p) => {
         const heading = p.title ? `# ${p.title}` : `# ${p.url}`;
-        return `${heading}\n> Source: ${p.url}\n\n${p.markdown || "_(no textual content found)_"}`;
+        // Cap each page so one huge page can't dominate the crawl output.
+        return `${heading}\n> Source: ${p.url}\n\n${cap(p.markdown, 30_000) || "_(no textual content found)_"}`;
       });
 
       let out = `_Crawled ${pages.length} page(s) from ${url}._\n\n` + sections.join("\n\n---\n\n");
@@ -105,9 +129,38 @@ server.registerTool(
   },
 );
 
+server.registerTool(
+  "screenshot",
+  {
+    title: "Screenshot a web page",
+    description:
+      "Render a URL in a real browser (through residential proxies + stealth) and return a PNG " +
+      "screenshot of the page. Use to see a page visually or capture JS-rendered content.",
+    inputSchema: {
+      url: z.string().url().describe("Absolute http(s) URL to screenshot."),
+    },
+  },
+  async ({ url }): Promise<ToolResult> => {
+    try {
+      const out = await scrapePage(url, true, process.env, { screenshot: true });
+      if (!out.screenshot) return fail(new Error("No screenshot was captured."));
+      return { content: [{ type: "image", data: out.screenshot.toString("base64"), mimeType: "image/png" }] };
+    } catch (err) {
+      return fail(err);
+    }
+  },
+);
+
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Clean up the shared browser on shutdown so Chromium doesn't linger.
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => {
+      void closeBrowser().finally(() => process.exit(0));
+    });
+  }
 
   // Diagnostics go to stderr so they never corrupt the JSON-RPC stream on stdout.
   if (hasProxy()) {

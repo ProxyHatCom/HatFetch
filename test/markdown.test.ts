@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { htmlToMarkdown } from "../src/html/markdown.js";
+import { htmlToMarkdown, looksLikeEmptyShell } from "../src/html/markdown.js";
 
 const ARTICLE = `<!DOCTYPE html>
 <html>
@@ -52,5 +52,27 @@ describe("htmlToMarkdown", () => {
       true,
     );
     expect(markdown).toContain("tiny");
+  });
+});
+
+describe("looksLikeEmptyShell", () => {
+  it("flags a tiny SPA shell with an app root", () => {
+    const html = `<html><body><div id="root"></div><script src="/app.js"></script></body></html>`;
+    expect(looksLikeEmptyShell("Loading…", html)).toBe(true);
+  });
+
+  it("flags a tiny page with several scripts", () => {
+    const html = `<html><body><script></script><script></script><script></script></body></html>`;
+    expect(looksLikeEmptyShell("", html)).toBe(true);
+  });
+
+  it("does NOT flag a page with substantial extracted text", () => {
+    const big = "word ".repeat(200); // ~1000 chars
+    const html = `<html><body><div id="root"></div><script></script></body></html>`;
+    expect(looksLikeEmptyShell(big, html)).toBe(false);
+  });
+
+  it("does NOT flag a small static page with no app markers", () => {
+    expect(looksLikeEmptyShell("short note", "<html><body><p>short note</p></body></html>")).toBe(false);
   });
 });
