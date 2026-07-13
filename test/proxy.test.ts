@@ -25,6 +25,24 @@ describe("buildProxyHatUsername", () => {
   it("omits session tokens entirely when not sticky (rotating)", () => {
     expect(buildProxyHatUsername("ph-8f2a1c", { country: "de" })).not.toContain("-sid-");
   });
+
+  it("emits region between country and city, skipping 'any'", () => {
+    expect(buildProxyHatUsername("ph-1", { country: "us", region: "California", city: "Los Angeles" })).toBe(
+      "ph-1-country-us-region-california-city-los_angeles",
+    );
+    expect(buildProxyHatUsername("ph-1", { region: "any" })).toBe("ph-1-country-any");
+  });
+
+  it("appends NO filter token for 'none'", () => {
+    expect(buildProxyHatUsername("ph-1", { filter: "none" })).toBe("ph-1-country-any");
+  });
+
+  it("accepts a filter value with or without the leading 'filter-'", () => {
+    expect(buildProxyHatUsername("ph-1", { filter: "high" })).toBe("ph-1-country-any-filter-high");
+    expect(buildProxyHatUsername("ph-1", { filter: "filter-high-speed-fast" })).toBe(
+      "ph-1-country-any-filter-high-speed-fast",
+    );
+  });
 });
 
 describe("buildProxy", () => {

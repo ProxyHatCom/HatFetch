@@ -61,6 +61,8 @@ Out of the box HatFetch fetches directly from your machine's IP. That's fine for
 }
 ```
 
+> **Which credentials?** Use your sub-user's **proxy username & password** — the gateway login shown on your [ProxyHat dashboard](https://dashboard.proxyhat.com), *not* your API key. (The API key is only for ProxyHat's management API; the residential gateway authenticates with `proxy_username` / `proxy_password`.)
+
 Grab credentials from [**proxyhat.com**](https://proxyhat.com) — 50M+ residential & mobile IPs across 148+ countries, with a free trial. HatFetch then rotates a fresh residential IP on every request and retries automatically when a site pushes back.
 
 > Prefer your own proxies? Set `PROXY_URL=http://user:pass@host:port` instead. HatFetch works with any HTTP(S) proxy — it just works best with residential IPs.
@@ -102,13 +104,16 @@ All configuration is via environment variables.
 
 | Variable | Description |
 |---|---|
-| `PROXYHAT_USERNAME` | ProxyHat sub-user proxy username. Enables the residential gateway. |
-| `PROXYHAT_PASSWORD` | ProxyHat sub-user proxy password. |
+| `PROXYHAT_USERNAME` | Sub-user **proxy username** (gateway login, not the API key). Enables the residential gateway. |
+| `PROXYHAT_PASSWORD` | Sub-user **proxy password**. |
 | `PROXYHAT_COUNTRY` | ISO country code to exit from, or `any` (default). |
+| `PROXYHAT_REGION` | Optional state/region to target (e.g. `california`). |
 | `PROXYHAT_CITY` | Optional city to target (e.g. `new_york`). |
 | `PROXYHAT_STICKY` | Keep one IP for a session, e.g. `30m` or `12h`. Omit for rotating IPs. |
-| `PROXYHAT_FILTER` | AI IP-quality filter: `medium` (default), `high`, `high-speed-fast`. |
+| `PROXYHAT_FILTER` | AI IP-quality filter: `medium` (default), `high`, `high-speed-fast`, `medium-speed-fast`, or `none`. |
 | `PROXY_URL` | Any generic `http(s)://user:pass@host:port` proxy (alternative to the above). |
+
+> HatFetch connects to the ProxyHat HTTP gateway (`gate.proxyhat.com:8080`) and builds the targeting username for you. Prefer full API-driven provisioning (minting connection URLs via `POST /v1/proxy-descriptors`)? Set `PROXY_URL` to the minted URL instead.
 
 ## How it works
 

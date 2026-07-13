@@ -31,12 +31,19 @@ export function buildProxyHatUsername(
   base: string,
   opts: {
     country?: string;
+    region?: string;
     city?: string;
     sticky?: string | undefined;
     filter?: string;
   } = {},
 ): string {
+  // Fixed token order per ProxyHat's grammar: base -> country -> region -> city
+  // -> [sid -> ttl] -> filter (last). See docs.proxyhat.com/connecting §6.2.
   const parts = [base.trim(), "country", (opts.country || "any").trim().toLowerCase()];
+
+  if (opts.region && opts.region.trim().toLowerCase() !== "any") {
+    parts.push("region", slug(opts.region));
+  }
 
   if (opts.city) {
     parts.push("city", slug(opts.city));
@@ -44,13 +51,18 @@ export function buildProxyHatUsername(
 
   if (opts.sticky !== undefined) {
     // A truthy PROXYHAT_STICKY enables a sticky IP. Its value (e.g. "30m", "12h")
-    // sets the TTL; a bare "true"/"1"/"" falls back to the 30m default.
+    // sets the TTL; a bare "true"/"1"/"" falls back to the 30m default. The server
+    // whitelist is {30m, 12h}; the gateway also accepts humanized client TTLs.
     const ttl = /^(true|1|yes|on)?$/i.test(opts.sticky) ? "30m" : opts.sticky.trim();
     parts.push("sid", randomBytes(8).toString("hex"), "ttl", ttl);
   }
 
-  if (opts.filter) {
-    parts.push("filter", opts.filter.trim().toLowerCase());
+  // Filter is appended last. Values: filter-high | filter-medium |
+  // filter-high-speed-fast | filter-medium-speed-fast. "none" appends nothing.
+  // Accept the value with or without the leading "filter-".
+  const filter = opts.filter?.trim().toLowerCase().replace(/^filter-/, "");
+  if (filter && filter !== "none") {
+    parts.push("filter", filter);
   }
 
   return parts.join("-");
@@ -71,6 +83,7 @@ export function buildProxy(env: NodeJS.ProcessEnv = process.env): ProxyConfig | 
   if (phUser && phPass) {
     const username = buildProxyHatUsername(phUser, {
       country: env.PROXYHAT_COUNTRY,
+      region: env.PROXYHAT_REGION,
       city: env.PROXYHAT_CITY,
       sticky: env.PROXYHAT_STICKY,
       filter: env.PROXYHAT_FILTER,
