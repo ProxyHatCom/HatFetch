@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProxy, buildProxyHatUsername, hasProxy } from "../src/fetch/proxy.js";
+import { buildProxyHatUsername, hasProxy, resolveProxySpec } from "../src/fetch/proxy.js";
 
 describe("buildProxyHatUsername", () => {
   it("always includes a country, defaulting to 'any'", () => {
@@ -45,28 +45,34 @@ describe("buildProxyHatUsername", () => {
   });
 });
 
-describe("buildProxy", () => {
-  it("returns null when nothing is configured", () => {
-    expect(buildProxy({})).toBeNull();
+describe("resolveProxySpec", () => {
+  it("returns null when nothing is configured", async () => {
+    expect(await resolveProxySpec({})).toBeNull();
     expect(hasProxy({})).toBe(false);
   });
 
-  it("prefers the ProxyHat gateway when username + password are set", () => {
-    const cfg = buildProxy({ PROXYHAT_USERNAME: "ph-1", PROXYHAT_PASSWORD: "secret" });
-    expect(cfg?.isProxyHat).toBe(true);
-    expect(cfg?.label).toBe("ProxyHat residential");
+  it("prefers explicit gateway username + password", async () => {
+    const spec = await resolveProxySpec({ PROXYHAT_USERNAME: "ph-1", PROXYHAT_PASSWORD: "secret" });
+    expect(spec?.isProxyHat).toBe(true);
+    expect(spec?.label).toBe("ProxyHat residential");
+    expect(spec?.uri).toContain("ph-1-country-any");
+    expect(spec?.uri).toContain("@gate.proxyhat.com:8080");
     expect(hasProxy({ PROXYHAT_USERNAME: "ph-1", PROXYHAT_PASSWORD: "secret" })).toBe(true);
   });
 
-  it("does not enable ProxyHat with only a username", () => {
-    const cfg = buildProxy({ PROXYHAT_USERNAME: "ph-1", PROXY_URL: "http://u:p@host:1" });
-    expect(cfg?.isProxyHat).toBe(false);
-    expect(cfg?.label).toBe("custom proxy");
+  it("does not enable the gateway with only a username", async () => {
+    const spec = await resolveProxySpec({ PROXYHAT_USERNAME: "ph-1", PROXY_URL: "http://u:p@host:1" });
+    expect(spec?.isProxyHat).toBe(false);
+    expect(spec?.label).toBe("custom proxy");
   });
 
-  it("falls back to a generic PROXY_URL", () => {
-    const cfg = buildProxy({ PROXY_URL: "http://u:p@host:8080" });
-    expect(cfg?.isProxyHat).toBe(false);
-    expect(cfg?.label).toBe("custom proxy");
+  it("falls back to a generic PROXY_URL", async () => {
+    const spec = await resolveProxySpec({ PROXY_URL: "http://u:p@host:8080" });
+    expect(spec?.isProxyHat).toBe(false);
+    expect(spec?.uri).toBe("http://u:p@host:8080");
+  });
+
+  it("treats an API key as configured (hasProxy)", () => {
+    expect(hasProxy({ PROXYHAT_API_KEY: "k" })).toBe(true);
   });
 });

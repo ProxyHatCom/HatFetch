@@ -1,6 +1,6 @@
-import { fetch } from "undici";
+import { fetch, ProxyAgent } from "undici";
 import { detectBlock } from "./blocks.js";
-import { buildProxy, hasProxy } from "./proxy.js";
+import { hasProxy, resolveProxySpec } from "./proxy.js";
 
 /**
  * Error thrown when a page cannot be retrieved. `userMessage` is written for the
@@ -43,8 +43,9 @@ function proxyHint(host: string, reason: string): string {
   return (
     `${host} blocked this request (${reason}). This site uses bot detection that ` +
     `filters datacenter/server IPs. Route the request through residential IPs to get past it:\n` +
-    `  • Set PROXYHAT_USERNAME + PROXYHAT_PASSWORD — residential IPs in 148+ countries, ` +
-    `free trial at https://proxyhat.com\n` +
+    `  • Simplest: set PROXYHAT_API_KEY — HatFetch auto-selects a residential sub-user. ` +
+    `Get a key (free trial) at https://proxyhat.com\n` +
+    `  • Or set PROXYHAT_USERNAME + PROXYHAT_PASSWORD (your dashboard proxy credentials).\n` +
     `  • Or set PROXY_URL to any http(s) proxy you already have.`
   );
 }
@@ -68,13 +69,25 @@ export async function fetchPage(url: string, options: FetchOptions = {}): Promis
   const host = safeHost(url);
   const proxied = hasProxy(env);
 
+  // Resolve the proxy spec once (may call the ProxyHat API for API-key mode). A
+  // fresh dispatcher is built per attempt below so rotating IPs actually rotate.
+  let spec = null;
+  if (proxied) {
+    try {
+      spec = await resolveProxySpec(env);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new HatFetchError(`proxy setup failed: ${reason}`, reason);
+    }
+  }
+
   // Attempt 0 = direct if no proxy configured, else straight through the proxy.
   // Each subsequent attempt rebuilds the proxy agent to encourage a fresh IP.
-  const totalAttempts = proxied ? maxProxyRetries + 1 : 1;
+  const totalAttempts = spec ? maxProxyRetries + 1 : 1;
   let lastBlockReason = "bot detection";
 
   for (let attempt = 0; attempt < totalAttempts; attempt++) {
-    const proxy = proxied ? buildProxy(env) : null;
+    const proxy = spec ? { agent: new ProxyAgent(spec.uri), label: spec.label } : null;
 
     let res;
     try {

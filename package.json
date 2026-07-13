@@ -1,6 +1,6 @@
 {
   "name": "hatfetch",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Give any LLM agent the power to read any website — even the ones that block bots. An MCP server that returns clean Markdown and handles blocks automatically via residential proxies.",
   "keywords": [
     "mcp",

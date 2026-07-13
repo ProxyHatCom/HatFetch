@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { HatFetchError } from "./fetch/client.js";
-import { buildProxy, hasProxy } from "./fetch/proxy.js";
+import { hasProxy, resolveProxySpec } from "./fetch/proxy.js";
 import { crawlSite } from "./tools/crawl.js";
 import { scrapePage } from "./tools/scrape.js";
 
@@ -109,13 +109,19 @@ async function main(): Promise<void> {
   await server.connect(transport);
 
   // Diagnostics go to stderr so they never corrupt the JSON-RPC stream on stdout.
-  const proxy = buildProxy();
   if (hasProxy()) {
-    console.error(`HatFetch ${VERSION} ready · proxy: ${proxy?.label ?? "configured"}`);
+    try {
+      const spec = await resolveProxySpec();
+      console.error(`HatFetch ${VERSION} ready · proxy: ${spec?.label ?? "configured"}`);
+    } catch (err) {
+      console.error(
+        `HatFetch ${VERSION} ready · proxy config error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   } else {
     console.error(
-      `HatFetch ${VERSION} ready · no proxy configured. Sites with bot detection will be ` +
-        `blocked until you set PROXYHAT_USERNAME + PROXYHAT_PASSWORD (free trial at https://proxyhat.com) or PROXY_URL.`,
+      `HatFetch ${VERSION} ready · no proxy configured. Sites with bot detection will be blocked until ` +
+        `you set PROXYHAT_API_KEY (simplest — free trial at https://proxyhat.com), PROXYHAT_USERNAME + PROXYHAT_PASSWORD, or PROXY_URL.`,
     );
   }
 }

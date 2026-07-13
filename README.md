@@ -53,19 +53,26 @@ Out of the box HatFetch fetches directly from your machine's IP. That's fine for
       "command": "npx",
       "args": ["-y", "hatfetch"],
       "env": {
-        "PROXYHAT_USERNAME": "your-proxy-username",
-        "PROXYHAT_PASSWORD": "your-proxy-password"
+        "PROXYHAT_API_KEY": "your-proxyhat-api-key"
       }
     }
   }
 }
 ```
 
-> **Which credentials?** Use your sub-user's **proxy username & password** — the gateway login shown on your [ProxyHat dashboard](https://dashboard.proxyhat.com), *not* your API key. (The API key is only for ProxyHat's management API; the residential gateway authenticates with `proxy_username` / `proxy_password`.)
+That's the whole setup. Drop in your **API key** and HatFetch automatically looks up an active residential sub-user on your account, connects through the gateway, and rotates a fresh IP on every request — retrying automatically when a site pushes back. Get a key (free trial) at [**proxyhat.com**](https://proxyhat.com): 50M+ residential & mobile IPs across 148+ countries.
 
-Grab credentials from [**proxyhat.com**](https://proxyhat.com) — 50M+ residential & mobile IPs across 148+ countries, with a free trial. HatFetch then rotates a fresh residential IP on every request and retries automatically when a site pushes back.
+<details>
+<summary>Other ways to connect</summary>
 
-> Prefer your own proxies? Set `PROXY_URL=http://user:pass@host:port` instead. HatFetch works with any HTTP(S) proxy — it just works best with residential IPs.
+- **Explicit gateway credentials** — skip the API lookup and use a specific sub-user's proxy login:
+  ```json
+  { "env": { "PROXYHAT_USERNAME": "your-proxy-username", "PROXYHAT_PASSWORD": "your-proxy-password" } }
+  ```
+- **Pick a specific sub-user** while still using the API key: add `"PROXYHAT_SUBUSER": "<uuid or name>"`.
+- **Bring your own proxy** — any HTTP(S) proxy: `"PROXY_URL": "http://user:pass@host:port"`.
+
+</details>
 
 ## Tools
 
@@ -104,8 +111,10 @@ All configuration is via environment variables.
 
 | Variable | Description |
 |---|---|
-| `PROXYHAT_USERNAME` | Sub-user **proxy username** (gateway login, not the API key). Enables the residential gateway. |
-| `PROXYHAT_PASSWORD` | Sub-user **proxy password**. |
+| `PROXYHAT_API_KEY` | **Simplest.** Your ProxyHat API key — HatFetch auto-selects an active residential sub-user via the API. |
+| `PROXYHAT_SUBUSER` | With the API key: pick a specific sub-user by `uuid` or `name` (default: first active one with traffic). |
+| `PROXYHAT_USERNAME` | Alternative to the API key: a sub-user **proxy username** (gateway login). |
+| `PROXYHAT_PASSWORD` | Sub-user **proxy password** (used with `PROXYHAT_USERNAME`). |
 | `PROXYHAT_COUNTRY` | ISO country code to exit from, or `any` (default). |
 | `PROXYHAT_REGION` | Optional state/region to target (e.g. `california`). |
 | `PROXYHAT_CITY` | Optional city to target (e.g. `new_york`). |
