@@ -1,5 +1,4 @@
-import { randomBytes } from "node:crypto";
-import { fetch } from "undici";
+import { ProxyHat, buildProxyUsername, PROXYHAT_GATEWAY, PROXYHAT_PORT_HTTP } from "proxyhat";
 
 /**
  * A resolved proxy specification: the full proxy URL plus metadata. The caller
@@ -18,62 +17,6 @@ export interface ProxySpec {
   isProxyHat: boolean;
 }
 
-const PROXYHAT_GATEWAY = "gate.proxyhat.com";
-const PROXYHAT_PORT = 8080;
-const PROXYHAT_API_BASE = "https://api.proxyhat.com/v1";
-
-/** Slugify a city/region value the way the ProxyHat gateway expects (spaces -> underscores). */
-function slug(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "_");
-}
-
-/**
- * Build the ProxyHat residential proxy username from its dash-delimited grammar:
- *   <base>-country-<iso>[-city-<slug>][-sid-<16hex>-ttl-<dur>][-filter-<type>]
- * Country is always present (defaults to `any`). A sticky session is added only
- * when requested; otherwise the gateway rotates the IP on every request.
- */
-export function buildProxyHatUsername(
-  base: string,
-  opts: {
-    country?: string;
-    region?: string;
-    city?: string;
-    sticky?: string | undefined;
-    filter?: string;
-  } = {},
-): string {
-  // Fixed token order per ProxyHat's grammar: base -> country -> region -> city
-  // -> [sid -> ttl] -> filter (last). See docs.proxyhat.com/connecting §6.2.
-  const parts = [base.trim(), "country", (opts.country || "any").trim().toLowerCase()];
-
-  if (opts.region && opts.region.trim().toLowerCase() !== "any") {
-    parts.push("region", slug(opts.region));
-  }
-
-  if (opts.city) {
-    parts.push("city", slug(opts.city));
-  }
-
-  if (opts.sticky !== undefined) {
-    // A truthy PROXYHAT_STICKY enables a sticky IP. Its value (e.g. "30m", "12h")
-    // sets the TTL; a bare "true"/"1"/"" falls back to the 30m default. The server
-    // whitelist is {30m, 12h}; the gateway also accepts humanized client TTLs.
-    const ttl = /^(true|1|yes|on)?$/i.test(opts.sticky) ? "30m" : opts.sticky.trim();
-    parts.push("sid", randomBytes(8).toString("hex"), "ttl", ttl);
-  }
-
-  // Filter is appended last. Values: filter-high | filter-medium |
-  // filter-high-speed-fast | filter-medium-speed-fast. "none" appends nothing.
-  // Accept the value with or without the leading "filter-".
-  const filter = opts.filter?.trim().toLowerCase().replace(/^filter-/, "");
-  if (filter && filter !== "none") {
-    parts.push("filter", filter);
-  }
-
-  return parts.join("-");
-}
-
 interface GatewayCreds {
   username: string;
   password: string;
@@ -83,27 +26,20 @@ interface GatewayCreds {
 const credsCache = new Map<string, Promise<GatewayCreds>>();
 
 /**
- * Fetch the account's sub-users via the ProxyHat management API and pick one to
- * connect through. Selection: an explicit PROXYHAT_SUBUSER (uuid or name) if set,
- * otherwise the first active, non-suspended sub-user with remaining traffic.
+ * Resolve a sub-user to connect through via the official `proxyhat` SDK.
+ * Selection: an explicit PROXYHAT_SUBUSER (uuid or name) if set, otherwise the
+ * first active, non-suspended sub-user with remaining traffic.
  */
 async function fetchSubUserCreds(apiKey: string, env: NodeJS.ProcessEnv): Promise<GatewayCreds> {
-  const res = await fetch(`${PROXYHAT_API_BASE}/sub-users`, {
-    headers: { authorization: `Bearer ${apiKey}`, accept: "application/json" },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) {
-    throw new Error(
-      `ProxyHat API returned HTTP ${res.status} for /sub-users — check PROXYHAT_API_KEY (get it from your ProxyHat dashboard).`,
-    );
+  let list;
+  try {
+    list = await new ProxyHat({ apiKey }).sub_users.list();
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`ProxyHat API lookup failed (${reason}) — check PROXYHAT_API_KEY from your dashboard.`);
   }
 
-  const body = (await res.json()) as { payload?: SubUser[] };
-  const list = Array.isArray(body.payload) ? body.payload : [];
-
-  const hasTraffic = (s: SubUser) => s.traffic_limit === 0 || (s.used_traffic ?? 0) < s.traffic_limit;
-  const usable = list.filter((s) => !s.suspended_at && hasTraffic(s));
-
+  const usable = list.filter((s) => !s.suspended_at && (s.traffic_limit === 0 || s.used_traffic < s.traffic_limit));
   const want = env.PROXYHAT_SUBUSER?.trim();
   const chosen = want ? list.find((s) => s.uuid === want || s.name === want) : usable[0];
 
@@ -115,16 +51,6 @@ async function fetchSubUserCreds(apiKey: string, env: NodeJS.ProcessEnv): Promis
     );
   }
   return { username: chosen.proxy_username, password: chosen.proxy_password };
-}
-
-interface SubUser {
-  uuid?: string;
-  name?: string;
-  proxy_username?: string;
-  proxy_password?: string;
-  used_traffic?: number;
-  traffic_limit: number;
-  suspended_at?: string | null;
 }
 
 /**
@@ -175,18 +101,22 @@ export async function resolveProxySpec(env: NodeJS.ProcessEnv = process.env): Pr
   return null;
 }
 
-/** Build a ProxySpec (undici uri + Playwright parts) for the ProxyHat gateway. */
+/**
+ * Build a ProxySpec (undici uri + Playwright parts) for the ProxyHat gateway,
+ * using the official SDK's grammar builder + gateway constants (single source of truth).
+ */
 function gatewaySpec(creds: GatewayCreds, env: NodeJS.ProcessEnv, label: string): ProxySpec {
-  const username = buildProxyHatUsername(creds.username, {
+  const username = buildProxyUsername(creds.username, {
     country: env.PROXYHAT_COUNTRY,
     region: env.PROXYHAT_REGION,
     city: env.PROXYHAT_CITY,
     sticky: env.PROXYHAT_STICKY,
     filter: env.PROXYHAT_FILTER,
   });
+  const gateway = `${PROXYHAT_GATEWAY}:${PROXYHAT_PORT_HTTP}`;
   return {
-    uri: `http://${encodeURIComponent(username)}:${encodeURIComponent(creds.password)}@${PROXYHAT_GATEWAY}:${PROXYHAT_PORT}`,
-    server: `http://${PROXYHAT_GATEWAY}:${PROXYHAT_PORT}`,
+    uri: `http://${encodeURIComponent(username)}:${encodeURIComponent(creds.password)}@${gateway}`,
+    server: `http://${gateway}`,
     username,
     password: creds.password,
     label,

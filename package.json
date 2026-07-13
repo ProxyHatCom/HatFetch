@@ -1,6 +1,6 @@
 {
   "name": "hatfetch",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Give any LLM agent the power to read any website — even the ones that block bots. An MCP server that returns clean Markdown and handles blocks automatically via residential proxies.",
   "keywords": [
     "mcp",
@@ -52,6 +52,7 @@
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.0",
     "patchright": "^1.61.1",
+    "proxyhat": "^0.2.0",
     "turndown": "^7.2.0",
     "undici": "^6.21.0",
     "zod": "^3.25.0"
