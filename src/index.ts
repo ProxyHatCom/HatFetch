@@ -127,7 +127,33 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error("HatFetch failed to start:", err);
-  process.exit(1);
-});
+const HELP = `HatFetch ${VERSION} — MCP server that reads any website as clean Markdown, past bot blocks.
+
+Usage:
+  hatfetch              Start the MCP server (stdio). Add it to your MCP client config.
+  hatfetch --selftest   Verify install + proxy configuration end-to-end.
+  hatfetch --version    Print the version.
+  hatfetch --help       Show this help.
+
+Proxy (set as env vars):
+  PROXYHAT_API_KEY      Simplest — auto-selects a residential sub-user. Key at https://proxyhat.com
+  PROXYHAT_USERNAME/PASSWORD, PROXYHAT_COUNTRY/REGION/CITY/STICKY/FILTER, PROXYHAT_SUBUSER, PROXY_URL
+
+Docs: https://github.com/ProxyHatCom/HatFetch`;
+
+const argv = process.argv.slice(2);
+if (argv.includes("--help") || argv.includes("-h")) {
+  console.log(HELP);
+  process.exit(0);
+} else if (argv.includes("--version") || argv.includes("-v")) {
+  console.log(VERSION);
+  process.exit(0);
+} else if (argv.includes("--selftest")) {
+  const { runSelfTest } = await import("./selftest.js");
+  process.exit(await runSelfTest(VERSION));
+} else {
+  main().catch((err) => {
+    console.error("HatFetch failed to start:", err);
+    process.exit(1);
+  });
+}

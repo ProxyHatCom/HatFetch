@@ -124,6 +124,23 @@ All configuration is via environment variables.
 
 > HatFetch connects to the ProxyHat HTTP gateway (`gate.proxyhat.com:8080`) and builds the targeting username for you. Prefer full API-driven provisioning (minting connection URLs via `POST /v1/proxy-descriptors`)? Set `PROXY_URL` to the minted URL instead.
 
+## Verify your setup
+
+Run the built-in self-test to confirm your install and proxy credentials work end-to-end — it compares your direct IP against the proxied exit IP and checks rotation:
+
+```bash
+PROXYHAT_API_KEY=your-key npx -y hatfetch --selftest
+```
+```
+  ✓ Direct connection works — your IP is 203.0.113.5
+  ✓ Proxy resolved — ProxyHat residential (via API key)
+  ✓ Traffic is routed through the proxy — exit IP is 183.88.219.209 (not your 203.0.113.5)
+  ✓ IP rotation works — second request exited from 73.149.15.4
+  ✓ Scrape pipeline works — fetched and parsed example.com
+```
+
+Other commands: `hatfetch --version`, `hatfetch --help`.
+
 ## How it works
 
 1. **Fetch** the URL with a realistic browser User-Agent (direct, or through your proxy).
