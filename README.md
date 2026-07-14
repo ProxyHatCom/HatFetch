@@ -32,6 +32,10 @@ The difference from a plain `fetch`: HatFetch **escalates automatically**. It st
 
 No tool passes 100% of anti-bot in 2026 — anyone claiming otherwise is selling something. HatFetch gets you the calm-to-medium web reliably and a good share of the hard web, and is honest about the rest.
 
+> [!TIP]
+> **Recommended proxies — [ProxyHat](https://proxyhat.com?utm_source=github&utm_medium=readme&utm_campaign=hatfetch&utm_content=callout) residential IPs.** Every feature in this package is tested end-to-end against ProxyHat and works great. First-class integration; also works with any proxy, or none.
+
+
 ## Quick start
 
 Add HatFetch to your MCP client — no install step, `npx` handles it:
